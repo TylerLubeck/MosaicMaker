@@ -31,6 +31,8 @@ type ColorTuple struct {
 
 
 var (
+	// To have the cmd input take the form of --sourceimages=".." --target=".." 
+	// just need to swap Arg to Flag
 	sourceImages = kingpin.Arg("sourceimages", "Directory of images to read from").Required().String()
 	targetImage  = kingpin.Arg("target", "Photo to turn in to a mosaic").Required().String()
 	MAX_OPEN_IMAGES = 100
@@ -58,19 +60,24 @@ func loadFiles(sourceImages string, fileChan chan<- *FileTuple) {
 }
 
 func filterImages(fileChan <-chan *FileTuple, imageChan chan<- *FileTuple) {
-	ch := make(chan bool, MAX_OPEN_IMAGES)
+	maxImagCh := make(chan bool, MAX_OPEN_IMAGES)
 	for ft := range fileChan {
-		ch <- true
+		maxImagCh <- true
 		fmt.Printf("calling checkImage on %s\n", ft.Path)
-		go checkImage(ft, imageChan, ch)
+		go checkImage(ft, imageChan, maxImagCh)
+	}
+	// TODO: There has to be a better way to do this.
+	fmt.Println("Checking that all images are completed")
+	for len(maxImagCh) > 0 {
+		continue
 	}
 	close(imageChan)
 	fmt.Println("All images filtered")
 }
 
-func checkImage(ft *FileTuple, imageChan chan<- *FileTuple, ch <-chan bool) {
+func checkImage(ft *FileTuple, imageChan chan<- *FileTuple, maxImagCh <-chan bool) {
 	if ft.Info.IsDir() {
-		<- ch
+		<- maxImagCh
 		return
 	}
 	fileContents, err := ioutil.ReadFile(ft.Path)
@@ -81,13 +88,12 @@ func checkImage(ft *FileTuple, imageChan chan<- *FileTuple, ch <-chan bool) {
 		ft.Contents = fileContents
 		imageChan <- ft
 	}
-	<- ch
+	<- maxImagCh
 }
 
 func handleImages(imageChan <-chan *FileTuple, colorChan chan<- *ColorTuple) {
 	fmt.Println("About to handle images")
 	for ft := range imageChan {
-		continue
 		fmt.Printf("Handling image %s\n", ft.Path)
 		imageReader := bytes.NewReader(ft.Contents)
 		img, _, err := image.Decode(imageReader)
