@@ -7,11 +7,13 @@ import (
 	"image"
 	"image/color"
 	_ "image/png"
+	_ "image/jpeg"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type FileTuple struct {
@@ -27,9 +29,11 @@ type ColorTuple struct {
 	Uses  int
 }
 
+
 var (
 	sourceImages = kingpin.Arg("sourceimages", "Directory of images to read from").Required().String()
 	targetImage  = kingpin.Arg("target", "Photo to turn in to a mosaic").Required().String()
+	MAX_OPEN_IMAGES = 100
 )
 
 func getFiles(ch chan<- *FileTuple) filepath.WalkFunc {
@@ -54,33 +58,36 @@ func loadFiles(sourceImages string, fileChan chan<- *FileTuple) {
 }
 
 func filterImages(fileChan <-chan *FileTuple, imageChan chan<- *FileTuple) {
+	ch := make(chan bool, MAX_OPEN_IMAGES)
 	for ft := range fileChan {
+		ch <- true
 		fmt.Printf("calling checkImage on %s\n", ft.Path)
-		go checkImage(ft, imageChan)
+		go checkImage(ft, imageChan, ch)
 	}
 	close(imageChan)
 	fmt.Println("All images filtered")
 }
 
-func checkImage(ft *FileTuple, imageChan chan<- *FileTuple) {
+func checkImage(ft *FileTuple, imageChan chan<- *FileTuple, ch <-chan bool) {
 	if ft.Info.IsDir() {
+		<- ch
 		return
 	}
-
 	fileContents, err := ioutil.ReadFile(ft.Path)
 	if err != nil {
 		fmt.Println(err)
 	}
-	if ct := http.DetectContentType(fileContents); ct == "image/png" {
+	if ct := http.DetectContentType(fileContents); strings.HasPrefix(strings.ToLower(ct), "image/") {
 		ft.Contents = fileContents
 		imageChan <- ft
 	}
-
+	<- ch
 }
 
 func handleImages(imageChan <-chan *FileTuple, colorChan chan<- *ColorTuple) {
 	fmt.Println("About to handle images")
 	for ft := range imageChan {
+		continue
 		fmt.Printf("Handling image %s\n", ft.Path)
 		imageReader := bytes.NewReader(ft.Contents)
 		img, _, err := image.Decode(imageReader)
