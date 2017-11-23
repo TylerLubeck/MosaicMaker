@@ -15,3 +15,5 @@
 
 # VIM
 *.*.sw[op]
+
+vendor/
