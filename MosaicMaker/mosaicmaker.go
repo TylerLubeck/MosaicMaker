@@ -16,7 +16,9 @@ func Make(targetFile, srcDirectory string) error {
 		"source", srcDirectory,
 	)
 
-	loadFiles(srcDirectory)
+	loader := FileLoader{Directory: srcDirectory}
+
+	loader.Load()
 	sugar.Debugw("Loaded all files")
 
 	return nil
